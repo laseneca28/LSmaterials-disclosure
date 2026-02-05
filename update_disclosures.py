@@ -4,7 +4,7 @@ from datetime import datetime
 import os
 
 # 1. 설정
-API_KEY = os.environ.get(4f76a1a02578fb70ca8e8c7fb5bb57ea8a87d061) # GitHub Secrets에서 가져옴
+API_KEY = os.environ.get('DART_API_KEY') # GitHub Secrets에서 가져옴
 dart = OpenDartReader(API_KEY)
 company_code = "417200" # LS머트리얼즈
 
