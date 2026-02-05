@@ -15,15 +15,17 @@ target_companies = [
 cols = ["공시제목", "판매ㆍ공급계약 내용", "조건부 계약여부", "확정 계약금액", "조건부 계약금액", 
         "계약금액 총액(원)", "최근 매출액(원)", "매출액 대비(%)", "계약 상대방", "시작일", "종료일", "계약(수주)일자"]
 
-# 숫자로 변환할 열 리스트
+# 숫자로 변환할 열
 numeric_cols = ["확정 계약금액", "조건부 계약금액", "계약금액 총액(원)", "최근 매출액(원)", "매출액 대비(%)"]
 
 def clean_number(text):
-    """문자열에서 숫자와 소수점만 남기고 숫자로 변환 (예: '1,234.5 (원)' -> 1234.5)"""
-    if not text or text == "-": return 0
+    """문자열에서 숫자와 소수점만 남기고 숫자로 변환 (예: '137,364,591,159 (원)' -> 137364591159)"""
+    if not text or text == "-" or str(text).strip() == "": return 0
     # 숫자와 소수점(.)만 남기기
     cleaned = re.sub(r'[^0-9.]', '', str(text))
+    if not cleaned: return 0
     try:
+        # 소수점이 있으면 float, 없으면 int
         return float(cleaned) if '.' in cleaned else int(cleaned)
     except:
         return 0
@@ -35,29 +37,32 @@ def get_detailed_info(rcept_no):
         tables = pd.read_html(document)
         
         for df in tables:
+            # 텍스트 전처리: 공백 제거 및 문자열화
             df = df.fillna("-").astype(str)
             for _, row in df.iterrows():
                 row_list = [c.replace(" ", "").replace("\n", "") for c in row.tolist()]
                 
-                # 키워드가 포함된 행에서 데이터 추출
                 for idx, cell in enumerate(row_list):
+                    # 값 후보 찾기: 현재 칸 이후에 '-'가 아닌 첫 번째 칸을 선택
                     target_val = "-"
-                    # 해당 행의 오른쪽 칸들 중 데이터가 있는 가장 먼 칸을 선택 (보통 맨 오른쪽이 값)
                     if idx + 1 < len(row_list):
-                        valid_cells = [c for c in row_list[idx+1:] if c != "-" and c != ""]
-                        target_val = valid_cells[-1] if valid_cells else "-"
+                        for next_cell in row_list[idx+1:]:
+                            if next_cell != "-" and next_cell != "":
+                                target_val = next_cell
+                                break
 
-                    if "판매ㆍ공급계약내용" in cell: info["판매ㆍ공급계약 내용"] = target_val
-                    elif "조건부계약여부" in cell: info["조건부 계약여부"] = target_val
-                    elif "확정계약금액" in cell: info["확정 계약금액"] = target_val
-                    elif "조건부계약금액" in cell: info["조건부 계약금액"] = target_val
-                    elif "계약금액총액" in cell: info["계약금액 총액(원)"] = target_val
-                    elif "최근매출액" in cell: info["최근 매출액(원)"] = target_val
-                    elif "매출액대비" in cell: info["매출액 대비(%)"] = target_val
+                    # 키워드 매칭 (더 포괄적으로 변경)
+                    if "판매" in cell and "공급" in cell and "내용" in cell: info["판매ㆍ공급계약 내용"] = target_val
+                    elif "조건부" in cell and "여부" in cell: info["조건부 계약여부"] = target_val
+                    elif "확정" in cell and "계약금액" in cell: info["확정 계약금액"] = target_val
+                    elif "조건부" in cell and "계약금액" in cell: info["조건부 계약금액"] = target_val
+                    elif "계약금액" in cell and "총액" in cell: info["계약금액 총액(원)"] = target_val
+                    elif "최근" in cell and "매출액" in cell: info["최근 매출액(원)"] = target_val
+                    elif "매출액" in cell and "대비" in cell: info["매출액 대비(%)"] = target_val
                     elif "계약상대방" in cell: info["계약 상대방"] = target_val
                     elif "시작일" in cell: info["시작일"] = target_val
                     elif "종료일" in cell: info["종료일"] = target_val
-                    elif "계약(수주)일자" in cell: info["계약(수주)일자"] = target_val
+                    elif "계약" in cell and "일자" in cell and "수주" in cell: info["계약(수주)일자"] = target_val
         return info
     except:
         return info
@@ -83,11 +88,11 @@ with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
 
         final_df = pd.DataFrame(detailed_data, columns=cols)
         
-        # 숫자 데이터 변환 작업
+        # 숫자 컬럼 변환 및 엑셀 서식 적용
         for col in numeric_cols:
             if col in final_df.columns:
                 final_df[col] = final_df[col].apply(clean_number)
 
         final_df.to_excel(writer, sheet_name=company['name'], index=False)
 
-print("작업이 완료되었습니다.")
+print("작업 완료.")
