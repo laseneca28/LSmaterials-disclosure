@@ -5,9 +5,14 @@ import os
 # 1. 설정
 API_KEY = os.environ.get('DART_API_KEY') 
 dart = OpenDartReader(API_KEY)
-company_code = "417200" # LS머트리얼즈
 
-# 요청하신 11개 항목 정의
+# 대상 기업 리스트
+target_companies = [
+    {"name": "LS머트리얼즈", "code": "417200"},
+    {"name": "비나텍", "code": "126340"}
+]
+
+# 11개 항목 정의
 cols = ["공시제목", "판매ㆍ공급계약 내용", "조건부 계약여부", "확정 계약금액", "조건부 계약금액", 
         "계약금액 총액(원)", "최근 매출액(원)", "매출액 대비(%)", "계약 상대방", "시작일", "종료일", "계약(수주)일자"]
 
@@ -35,25 +40,29 @@ def get_detailed_info(rcept_no):
     except:
         return info
 
-# 2. 공시 리스트 수집 (start 매개변수 사용)
-try:
-    df_list = dart.list(company_code, start='2024-01-01')
-except:
-    df_list = None
+# 2. 엑셀 파일 하나에 여러 시트로 저장하기
+file_name = "Integrated_Disclosure_Report.xlsx"
 
-detailed_data = []
+with pd.ExcelWriter(file_name, engine='openpyxl') as writer:
+    for company in target_companies:
+        print(f"[{company['name']}] 데이터 수집 중...")
+        try:
+            df_list = dart.list(company['code'], start='2024-01-01')
+        except:
+            df_list = None
 
-# 데이터가 있는 경우에만 상세 정보 추출
-if df_list is not None and not df_list.empty:
-    contracts_list = df_list[df_list['report_nm'].str.contains('단일판매|공급계약', na=False)].copy()
-    for _, row in contracts_list.iterrows():
-        details = get_detailed_info(row['rcept_no'])
-        details['공시제목'] = row['report_nm']
-        detailed_data.append(details)
+        detailed_data = []
+        if df_list is not None and not df_list.empty:
+            contracts_list = df_list[df_list['report_nm'].str.contains('단일판매|공급계약', na=False)].copy()
+            for _, row in contracts_list.iterrows():
+                details = get_detailed_info(row['rcept_no'])
+                details['공시제목'] = row['report_nm']
+                detailed_data.append(details)
 
-# 3. 데이터프레임 생성 (데이터가 없어도 컬럼 구조는 유지)
-final_df = pd.DataFrame(detailed_data, columns=cols)
+        # 데이터가 없더라도 빈 시트 구조 생성
+        final_df = pd.DataFrame(detailed_data, columns=cols)
+        # 시트 이름을 회사명으로 설정하여 저장
+        final_df.to_excel(writer, sheet_name=company['name'], index=False)
+        print(f"[{company['name']}] 시트 생성 완료.")
 
-# 4. 저장 (에러 방지를 위해 항상 파일 생성)
-final_df.to_excel("LS_Materials_Contracts.xlsx", index=False)
-print(f"작업 완료: {len(detailed_data)}건의 데이터 처리됨.")
+print(f"최종 파일 생성 완료: {file_name}")
